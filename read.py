@@ -1,11 +1,12 @@
-# Serial3.py
-
+#!/usr/bin/env python
+# -*- coding: utf-8 -*-
 import serial
+import pynmea2
 
-#port = "/dev/ttyAMA0"  # Raspberry Pi 2
-port = "/dev/ttyS0"    # Raspberry Pi 3
-
-ser = serial.Serial(port, baudrate = 38400, timeout = 0.5)
+serialStream = serial.Serial("/dev/ttyUSB0", baudrate=38400, timeout=3.0)
+print "go"
 while True:
-    data = ser.readline()
-    print (data)
+	sentence = serialStream.readline()
+	if sentence.find('GGA') > 0:
+		data = pynmea2.parse(sentence)
+		print "{time}: {lat},{lon}".format(time=data.timestamp,lat=data.latitude,lon=data.longitude)

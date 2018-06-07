@@ -1,37 +1,48 @@
-# Serial4.py
-
+#!/usr/bin/env python
+# -*- coding: utf-8 -*-
 import serial
+import pynmea2
+import math
 
-#port = "/dev/ttyAMA0"  # Raspberry Pi 2
-port = "/dev/ttyS0"    # Raspberry Pi 3
+def toDegree(value): # calculate (lan or lat) from DegreeMinutes to Degree
+	degree = float(str(value)[:2])
+	minutes = float(str(value)[2:])
+	mindeg = minutes/60
+	return degree+mindeg
 
-def parseGPS(data):
-#    print "raw:", data
-    if data[0:6] == "$GPGGA":
-        s = data.split(",")
-        if s[7] == '0':
-            print "no satellite data available"
-            return        
-        time = s[1][0:2] + ":" + s[1][2:4] + ":" + s[1][4:6]
-        lat = decode(s[2])
-        dirLat = s[3]
-        lon = decode(s[4])
-        dirLon = s[5]
-        alt = s[9] + " m"
-        sat = s[7]
-        print "Time(UTC): %s-- Latitude: %s(%s)-- Longitude:%s(%s)\
--- Altitute:%s--(%s satellites)" %(time, lat, dirLat, lon, dirLon, alt, sat) 
 
-def decode(coord):
-    # DDDMM.MMMMM -> DD deg MM.MMMMM min
-    v = coord.split(".")
-    head = v[0]
-    tail =  v[1]
-    deg = head[0:-2]
-    min = head[-2:]
-    return deg + " deg " + min + "." + tail + " min"
+#Formel: θ = atan2(sin(Δlong).cos(lat2), cos(lat1).sin(lat2) − sin(lat1).cos(lat2).cos(Δlong))
+# input: pA Array [lat, lon], pB Array [lat, lon]
+def compass(pointA, pointB):
+	if (type(pointA) != tuple) or (type(pointB) != tuple):
+		raise TypeError("Only tuples, GPS online?")
+	lat1 = math.radians(pointA[0])
+	lat2 = math.radians(pointB[0])
 
-ser = serial.Serial(port, baudrate = 9600, timeout = 0.5)
+	diffLong = math.radians(pointB[1] - pointA[1])
+
+	x = math.sin(diffLong) * math.cos(lat2)
+	y = math.cos(lat1) * math.sin(lat2) - (math.sin(lat1)* math.cos(lat2) * math.cos(diffLong))
+
+	initial_bearing = math.atan2(x, y)
+	initial_bearing = math.degrees(initial_bearing)
+	compass_bearing = (initial_bearing + 360) % 360
+	return compass_bearing
+
+def getOrientation(data):
+	arr = str(data).split(",")
+	return arr[8]
+
+serialStream = serial.Serial("/dev/ttyUSB0", baudrate=38400, timeout=3.0)
+print "---→ start"
+# set Aimpoints
+aim = (47.67130103854597, 9.181145131587984)
+
 while True:
-    data = ser.readline()
-    parseGPS(data)
+	sentence = serialStream.readline()
+	if sentence.find('GPRMC') > 0:
+		data = pynmea2.parse(sentence)
+		#print "{time}: {lat},{lon}".format(time=data.timestamp,lat=data.latitude,lon=data.longitude)
+		loc  = (data.latitude, data.longitude)
+		print compass(loc, aim)
+		print "ME:", getOrientation(data)
